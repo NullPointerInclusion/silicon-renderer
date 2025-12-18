@@ -1,0 +1,38 @@
+{
+  "name": "silicon-renderer",
+  "version": "0.0.0-alpha0",
+  "description": "A simple renderer that uses the HTML Canvas2D API.",
+  "homepage": "https://github.com/natsie/silicon-renderer#readme",
+  "author": "Oghenevwegba Obire",
+  "license": "MIT",
+  "keywords": [
+    "silicon-renderer",
+    "renderer",
+    "canvas",
+    "2d",
+    "graphics"
+  ],
+  "type": "module",
+  "main": "dist/silicon.js",
+  "scripts": {
+    "build": "bunx tsgo",
+    "dev": "bun run ./web/index.html",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "broadutils": "github:natsie/broadutils"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.4",
+    "@typescript/native-preview": "^7.0.0-dev.20251218.1",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
+  },
+  "bugs": {
+    "url": "https://github.com/natsie/silicon-renderer/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/natsie/silicon-renderer.git"
+  }
+}
