@@ -16,23 +16,23 @@
   "main": "dist/silicon.js",
   "scripts": {
     "build": "bunx tsgo",
-    "dev": "bun run ./web/index.html",
+    "dev": "bun run --port 3333 ./web/index.html",
     "test": "bun test"
   },
   "dependencies": {
-    "broadutils": "github:natsie/broadutils"
+    "broadutils": "github:NullPointerInclusion/broadutils"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.4",
-    "@typescript/native-preview": "^7.0.0-dev.20251218.1",
-    "prettier": "^3.7.4",
+    "@types/bun": "^1.3.6",
+    "@typescript/native-preview": "^7.0.0-dev.20260118.1",
+    "prettier": "^3.8.0",
     "typescript": "^5.9.3"
   },
   "bugs": {
-    "url": "https://github.com/natsie/silicon-renderer/issues"
+    "url": "https://github.com/NullPointerInclusion/silicon-renderer/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/natsie/silicon-renderer.git"
+    "url": "git+https://github.com/NullPointerInclusion/silicon-renderer.git"
   }
 }

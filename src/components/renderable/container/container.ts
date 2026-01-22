@@ -1,6 +1,6 @@
 import { resize } from "broadutils/canvas";
 import { nonNullable } from "broadutils/validate";
-import { getEmitter, zSort } from "../../shared.ts";
+import { getEmitter, zSort, type CanvasWithContext } from "../../shared.ts";
 import { RenderObject } from "../base/base.ts";
 import type { ContainerConfig, ContainerData } from "./types.ts";
 
@@ -19,9 +19,8 @@ class Container extends RenderObject {
         return null;
       },
       onchildupdate: (_: RenderObject, { prop }: { prop: string }) => {
-        const data = this.data;
-        data.cachedImage = null;
-        if (prop === "position") data.shouldSortChildren = true;
+        this.markCacheDirty();
+        if (prop === "position") this.data.shouldSortChildren = true;
         return null;
       },
     },
@@ -82,12 +81,15 @@ class Container extends RenderObject {
     return null;
   }
 
-  public override renderToImage(): HTMLCanvasElement | HTMLImageElement {
+  public override renderToImage(): CanvasWithContext {
     const { data } = this;
-    if (data.cachedImage) return data.cachedImage;
+    if (!data.cacheDirty) return data.cachedImage;
 
-    const { canvas, context } = data;
-    resize(canvas, [data.width, data.height]);
+    const {
+      cachedImage,
+      cachedImage: { context },
+    } = data;
+    resize(cachedImage, data.dimensions);
 
     context.reset();
     data.shouldSortChildren && (data.shouldSortChildren = !data.children.sort(zSort));
@@ -97,7 +99,7 @@ class Container extends RenderObject {
       context.restore();
     }
 
-    data.cachedImage = canvas;
+    this.markCacheClean();
     return data.cachedImage;
   }
 
@@ -106,7 +108,12 @@ class Container extends RenderObject {
     emitter.emit("prerender", [this, context]);
 
     const { matrix, relativeMatrix } = this;
-    const { width, height, scale, anchor, alpha } = this.data;
+    const {
+      dimensions: [width, height],
+      scale,
+      anchor,
+      alpha,
+    } = this.data;
 
     const localMatrix = matrix;
     localMatrix.e += anchor[0] * width;

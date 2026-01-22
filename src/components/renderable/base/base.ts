@@ -1,14 +1,7 @@
 import type { Vector2, Vector3 } from "broadutils/types";
-import { getEmitter } from "../../shared.ts";
+import { getCanvasWithContext, getEmitter, type CanvasWithContext } from "../../shared.ts";
 import { radiansToDegrees } from "../../utils.ts";
-import type { CachedImage, RenderObjectConfig, RenderObjectData } from "./types.ts";
-import { nonNullable } from "broadutils/validate";
-
-const getDrawingTools = (): { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D } => {
-  const canvas = document.createElement("canvas");
-  const context = nonNullable(canvas.getContext("2d"));
-  return { canvas, context };
-};
+import type { RenderObjectConfig, RenderObjectData } from "./types.ts";
 
 const getRenderObjectId = (object: RenderObject): string => {
   const constructorName: string = Object.getPrototypeOf(object).constructor.name;
@@ -21,31 +14,42 @@ class RenderObject {
   protected matrix: DOMMatrix = new DOMMatrix();
   protected data: RenderObjectData = {
     id: "",
+    listeners: {},
+
     alpha: 1,
     anchor: [0, 0],
+    dimensions: [0, 0],
+    position: [0, 0, 0],
     rotation: 0,
     scale: [1, 1],
-    width: 0,
-    height: 0,
-    zIndex: 0,
-    listeners: {},
-    cachedImage: null,
-    ...getDrawingTools(),
+
+    cachedImage: getCanvasWithContext(),
+    cacheDirty: true,
   };
 
-  constructor(config: Partial<RenderObjectConfig & { zIndex: number }> = {}) {
+  constructor(config: Partial<RenderObjectConfig> = {}) {
     this.assignROConfig(config);
   }
 
   private assignROConfig(config: Partial<RenderObjectConfig>): null {
     const { data, matrix } = this;
     data.id = config.id ?? getRenderObjectId(this);
+
     data.alpha = config.alpha ?? data.alpha;
     data.anchor = config.anchor ?? data.anchor;
-    data.height = config.height ?? data.height;
     data.rotation = config.rotation ?? data.rotation;
     data.scale = config.scale ?? data.scale;
-    data.width = config.width ?? data.width;
+
+    if (config.dimensions) {
+      const dimensions = config.dimensions;
+      let width: number, height: number;
+
+      if (Array.isArray(dimensions)) [width, height] = [dimensions[0], dimensions[1]];
+      else [width, height] = [dimensions.width ?? 0, dimensions.height ?? 0];
+
+      data.dimensions[0] = width;
+      data.dimensions[1] = height;
+    }
 
     if (config.position) {
       const position = config.position;
@@ -54,9 +58,9 @@ class RenderObject {
       if (Array.isArray(position)) [x, y, z] = [position[0], position[1], position[2] ?? 0];
       else [x, y, z] = [position.x ?? 0, position.y ?? 0, position.z ?? 0];
 
-      matrix.e = x;
-      matrix.f = y;
-      this.data.zIndex = z;
+      data.position[0] = matrix.e = x;
+      data.position[1] = matrix.f = y;
+      data.position[2] = z;
     }
 
     return null;
@@ -64,6 +68,16 @@ class RenderObject {
 
   protected getInternalData(): RenderObjectData {
     return this.data;
+  }
+
+  protected markCacheClean(): null {
+    this.data.cacheDirty = false;
+    return null;
+  }
+
+  public markCacheDirty(): null {
+    this.data.cacheDirty = true;
+    return null;
   }
 
   public updateRelativeMatrix(relativeMatrix: DOMMatrix): null {
@@ -74,79 +88,94 @@ class RenderObject {
 
   public alpha(value?: number): number {
     const data = this.data;
-    if (value != null) {
-      const alpha = data.alpha;
-      data.alpha = value;
+    const alpha = data.alpha;
+    data.alpha = value ?? alpha;
+
+    value != null &&
       getEmitter(this).emit("propupdate", [
         this,
-        { prop: "alpha", previous: alpha, current: data.alpha },
+        { prop: "alpha", previous: alpha, current: value },
       ]);
-    }
 
     return data.alpha;
   }
 
-  public anchor(value?: Vector2): Vector2 {
+  public anchor(value: Vector2 = this.data.anchor): Vector2 {
     const data = this.data;
-    if (value != null) {
-      const anchor: Vector2 = [...data.anchor];
-      ((data.anchor[0] = value[0]), (data.anchor[1] = value[1]));
+    const anchor: Vector2 = [...data.anchor];
+    const changed = anchor[0] !== value[0] || anchor[1] !== value[1];
+
+    if (changed) {
+      data.anchor[0] = value[0];
+      data.anchor[1] = value[1];
       getEmitter(this).emit("propupdate", [
         this,
         { prop: "anchor", previous: anchor, current: [...data.anchor] },
       ]);
     }
 
-    return data.anchor;
+    return [...data.anchor];
   }
 
-  public height(value?: number): number {
+  public dimensions(value: Vector2 = this.data.dimensions): Vector2 {
     const data = this.data;
-    if (value != null) {
-      const height = data.height;
-      data.height = value;
+    const dimensions: Vector2 = [...data.dimensions];
+    const changed = dimensions[0] !== value[0] || dimensions[1] !== value[1];
+
+    if (changed) {
+      data.dimensions[0] = value[0];
+      data.dimensions[1] = value[1];
+      this.markCacheDirty();
       getEmitter(this).emit("propupdate", [
         this,
-        { prop: "height", previous: height, current: data.height },
+        { prop: "dimensions", previous: dimensions, current: [...data.dimensions] },
       ]);
     }
 
-    return data.height;
+    return [...data.dimensions];
+  }
+
+  public height(value?: number): number {
+    if (value == null) return this.data.dimensions[1];
+    return this.dimensions([this.data.dimensions[0], value])[1];
   }
 
   public position(value?: RenderObjectConfig["position"]): Vector3 {
     const { data, matrix } = this;
+    const position: Vector3 = data.position;
 
     if (value != null) {
-      const position: Vector3 = [matrix.e, matrix.f, data.zIndex];
+      const prevPosition: Vector3 = [...position];
       if (Array.isArray(value)) {
-        matrix.e = value[0];
-        matrix.f = value[1];
-        data.zIndex = value[2] ?? data.zIndex;
+        position[0] = matrix.e = value[0];
+        position[1] = matrix.f = value[1];
+        position[2] = value[2] ?? position[2];
       } else {
-        matrix.e = value.x ?? matrix.e;
-        matrix.f = value.y ?? matrix.f;
-        data.zIndex = value.z ?? data.zIndex;
+        position[0] = matrix.e = value.x ?? matrix.e;
+        position[1] = matrix.f = value.y ?? matrix.f;
+        position[2] = value.z ?? position[2];
       }
 
       getEmitter(this).emit("matrixupdate", [this, this.matrix]);
       getEmitter(this).emit("propupdate", [
         this,
-        { prop: "position", previous: position, current: [matrix.e, matrix.f, data.zIndex] },
+        { prop: "position", previous: prevPosition, current: [...position] },
       ]);
     }
 
-    return [matrix.e, matrix.f, data.zIndex];
+    return [...position];
   }
 
   public rotation(value?: number) {
     const { data, matrix } = this;
-    if (value != null) {
-      const rotation = data.rotation;
-      const diff = value - rotation;
-      data.rotation = value % (Math.PI * 2);
-      matrix.rotateSelf(radiansToDegrees(diff));
+    const rotation = data.rotation;
 
+    data.rotation = value ?? rotation;
+    data.rotation %= Math.PI * 2;
+
+    const diff = data.rotation - rotation;
+    if (diff) {
+      matrix.rotateSelf(radiansToDegrees(diff));
       getEmitter(this).emit("matrixupdate", [this, this.matrix]);
       getEmitter(this).emit("propupdate", [
         this,
@@ -157,42 +186,36 @@ class RenderObject {
     return data.rotation;
   }
 
-  public scale(value?: Vector2): Vector2 {
+  public scale(value: Vector2 = this.data.scale): Vector2 {
     const data = this.data;
-    if (value != null) {
-      const scale: Vector2 = [...data.scale];
-      ((data.scale[0] = value[0]), (data.scale[1] = value[1]));
+    const scale: Vector2 = [...data.scale];
+    const changed = scale[0] !== value[0] || scale[1] !== value[1];
+
+    if (changed) {
+      data.scale[0] = value[0];
+      data.scale[1] = value[1];
       getEmitter(this).emit("propupdate", [
         this,
         { prop: "scale", previous: scale, current: [...data.scale] },
       ]);
     }
 
-    return data.scale;
+    return [...data.scale];
   }
 
   public width(value?: number): number {
-    const data = this.data;
-    if (value != null) {
-      const width = data.width;
-      data.width = value;
-      getEmitter(this).emit("propupdate", [
-        this,
-        { prop: "width", previous: width, current: data.width },
-      ]);
-    }
-
-    return data.width;
+    if (value == null) return this.data.dimensions[0];
+    return this.dimensions([value, this.data.dimensions[1]])[0];
   }
 
   public move(dx: number, dy: number): null {
-    const { data, matrix } = this;
-    this.position([matrix.e + dx, matrix.f + dy, data.zIndex]);
+    const matrix = this.matrix;
+    this.position([matrix.e + dx, matrix.f + dy]);
     return null;
   }
 
   public moveTo(x: number, y: number): null {
-    this.position([x, y, this.data.zIndex]);
+    this.position([x, y]);
     return null;
   }
 
@@ -211,7 +234,6 @@ class RenderObject {
     this.position([
       matrix.e + Math.cos(data.rotation) * dpos,
       matrix.f + Math.sin(data.rotation) * dpos,
-      data.zIndex,
     ]);
     return null;
   }
@@ -221,12 +243,15 @@ class RenderObject {
     this.position([
       matrix.e - Math.cos(data.rotation) * dpos,
       matrix.f - Math.sin(data.rotation) * dpos,
-      data.zIndex,
     ]);
     return null;
   }
 
-  protected renderToImage(): CachedImage {
+  protected renderToImage(): CanvasWithContext {
+    throw new Error("Method not implemented.");
+  }
+
+  protected updateCachedImage(): null {
     throw new Error("Method not implemented.");
   }
 

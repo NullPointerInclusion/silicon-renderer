@@ -1,6 +1,20 @@
+import { convertToDataUrl } from "broadutils/data";
+import type { Vector2 } from "broadutils/types";
 import { nonNullable } from "broadutils/validate";
 
-type TextureSource = string | ArrayBuffer | ArrayBufferView<ArrayBuffer> | Blob | CanvasImageSource;
+type TextureSource =
+  | string
+  | ArrayBuffer
+  | ArrayBufferView<ArrayBuffer>
+  | Blob
+  | ImageData
+  | CanvasImageSource;
+
+interface TextureData {
+  image: HTMLImageElement;
+  imageData: ImageData;
+  pixelated: boolean;
+}
 
 interface TextureConfig {
   pixelated: boolean;
@@ -12,6 +26,16 @@ interface CheckerboardConfig {
   cellSize: number;
   colours: [string, string?];
 }
+
+const isBlobPart = (value: unknown): value is BlobPart => {
+  return (
+    typeof value === "string" ||
+    value instanceof Blob ||
+    value instanceof ArrayBuffer ||
+    ArrayBuffer.isView(value)
+  );
+};
+
 const checkerboard = (config: CheckerboardConfig): HTMLCanvasElement => {
   const canvas = document.createElement("canvas");
   const context = nonNullable(canvas.getContext("2d"));
@@ -64,21 +88,33 @@ class Texture {
     return context.getImageData(0, 0, canvas.width, canvas.height);
   }
 
-  public image: HTMLImageElement;
-  public data: ImageData;
-  public pixelated: boolean;
+  protected internalData: TextureData;
   public constructor(image: HTMLImageElement, config: Partial<TextureConfig> = {}) {
-    this.image = image;
-    this.data = Texture.getImageData(image);
-    this.pixelated = config.pixelated ?? false;
+    this.internalData = {
+      image,
+      imageData: Texture.getImageData(image),
+      pixelated: config.pixelated ?? false,
+    };
   }
 
-  public get width(): number {
-    return this.image.width;
+  public dimensions(): Vector2 {
+    const image = this.image();
+    return [image.width, image.height];
   }
 
-  public get height(): number {
-    return this.image.height;
+  public image(): HTMLImageElement {
+    return this.internalData.image;
+  }
+
+  public imageData(): ImageData {
+    const imageData = this.internalData.imageData;
+    return new ImageData(imageData.data, imageData.width, imageData.height, {
+      colorSpace: imageData.colorSpace,
+    });
+  }
+
+  public pixelated(): boolean {
+    return this.internalData.pixelated;
   }
 
   public static async from(
@@ -90,14 +126,14 @@ class Texture {
     const image = document.createElement("img");
 
     if (typeof source === "string") image.src = source;
-    else if (
-      source instanceof ArrayBuffer ||
-      ArrayBuffer.isView(source) ||
-      source instanceof Blob
-    ) {
-      image.src = URL.createObjectURL(new Blob([source]));
-      await image.decode(); // decode the image immediately so that we can revoke the url
-      URL.revokeObjectURL(image.src);
+    else if (isBlobPart(source)) image.src = await convertToDataUrl(source);
+    else if (source instanceof ImageData) {
+      canvas.width = source.width;
+      canvas.height = source.height;
+      context.putImageData(source, 0, 0);
+      image.src = canvas.toDataURL("image/webp", 1);
+      await image.decode();
+      return new Texture(image, config);
     } else {
       let width = 0;
       let height = 0;

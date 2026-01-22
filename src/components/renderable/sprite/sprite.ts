@@ -1,14 +1,8 @@
-import { getEmitter } from "../../shared.ts";
+import { resize } from "broadutils/canvas";
+import { getEmitter, type CanvasWithContext } from "../../shared.ts";
 import { Texture } from "../../texture/texture.ts";
 import { RenderObject } from "../base/base.ts";
 import type { SpriteConfig, SpriteData, SpritePropertyUpdate } from "./types.ts";
-
-const cacheRenewProps = new Set<SpritePropertyUpdate["prop"]>([
-  "texture",
-  "scale",
-  "width",
-  "height",
-]);
 
 export class Sprite extends RenderObject {
   protected override data: SpriteData = Object.assign(super.getInternalData(), {
@@ -18,41 +12,45 @@ export class Sprite extends RenderObject {
     super(config);
     this.assignSpriteConfig(config);
     this.renderToImage();
-
-    getEmitter(this).addListener("propupdate", (_, { prop }) => {
-      const data = this.data;
-      cacheRenewProps.has(prop) && (data.cachedImage = null);
-      return null;
-    });
   }
 
   private assignSpriteConfig(config: Partial<SpriteConfig>): null {
     const data = this.data;
     data.texture = config.texture ?? data.texture;
-    data.width = config.width ?? data.texture.width;
-    data.height = config.height ?? data.texture.height;
+    if (!config.dimensions) this.dimensions(data.texture.dimensions());
     return null;
   }
 
   public texture(value?: Texture): Texture {
     const data = this.data;
-    if (value != null && value !== data.texture) {
-      const previous = data.texture;
-      data.texture = value;
+    const texture = data.texture;
+    data.texture = value ?? texture;
+
+    if (value != null) {
+      this.markCacheDirty();
       getEmitter(this).emit("propupdate", [
         this,
-        { prop: "texture", previous, current: data.texture },
+        { prop: "texture", previous: texture, current: value },
       ]);
     }
+
     return data.texture;
   }
 
-  public override renderToImage(): HTMLCanvasElement | HTMLImageElement {
+  public override renderToImage(): CanvasWithContext {
     const data = this.data;
-    if (data.cachedImage) return data.cachedImage;
+    if (!data.cacheDirty) return data.cachedImage;
 
-    data.cachedImage = data.texture.image;
-    return data.texture.image;
+    const canvas = data.cachedImage;
+    const context = canvas.context;
+    const texture = data.texture;
+
+    context.reset();
+    resize(canvas, texture.dimensions());
+    context.drawImage(texture.image(), 0, 0);
+
+    this.markCacheClean();
+    return canvas;
   }
 
   public override render(context: CanvasRenderingContext2D): null {
@@ -60,7 +58,13 @@ export class Sprite extends RenderObject {
     emitter.emit("prerender", [this, context]);
 
     const { matrix, relativeMatrix } = this;
-    const { texture, width, height, scale, anchor, alpha } = this.data;
+    const {
+      texture,
+      dimensions: [width, height],
+      scale,
+      anchor,
+      alpha,
+    } = this.data;
 
     const localMatrix = matrix;
     localMatrix.e += anchor[0] * width;
@@ -69,7 +73,16 @@ export class Sprite extends RenderObject {
     context.globalAlpha *= alpha;
     context.imageSmoothingEnabled = !texture.pixelated;
     context.setTransform(relativeMatrix.multiply(localMatrix).scale(scale[0], scale[1]));
-    context.drawImage(texture.image, -(anchor[0] * width), -(anchor[1] * height), width, height);
+    context.drawImage(
+      this.renderToImage(),
+      -(anchor[0] * width),
+      -(anchor[1] * height),
+      width,
+      height,
+    );
+
+    localMatrix.e -= anchor[0] * width;
+    localMatrix.f -= anchor[1] * height;
 
     emitter.emit("postrender", [this, context]);
     return null;
