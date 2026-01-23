@@ -1,4 +1,3 @@
-- Update rendering flow to properly distinguish between rendering to an image and caching.
 - Implement [`Text`](./src/components/renderable/text/text.ts) rendering with accurate position calculations.
 - Implement a `Graphics` system for flexible, customisable drawing.
 - Write detailed documentation on the public APIs provided by `Silicon` and its components.

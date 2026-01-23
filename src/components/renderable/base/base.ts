@@ -194,6 +194,7 @@ class RenderObject {
     if (changed) {
       data.scale[0] = value[0];
       data.scale[1] = value[1];
+      this.matrix.scaleSelf(value[0] / scale[0], value[1] / scale[1]);
       getEmitter(this).emit("propupdate", [
         this,
         { prop: "scale", previous: scale, current: [...data.scale] },
@@ -245,10 +246,6 @@ class RenderObject {
       matrix.f - Math.sin(data.rotation) * dpos,
     ]);
     return null;
-  }
-
-  protected renderToImage(): CanvasWithContext {
-    throw new Error("Method not implemented.");
   }
 
   protected updateCachedImage(): null {

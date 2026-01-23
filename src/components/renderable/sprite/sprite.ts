@@ -1,8 +1,9 @@
 import { resize } from "broadutils/canvas";
-import { getEmitter, type CanvasWithContext } from "../../shared.ts";
+import type { Vector2 } from "broadutils/types";
+import { getEmitter } from "../../shared.ts";
 import { Texture } from "../../texture/texture.ts";
 import { RenderObject } from "../base/base.ts";
-import type { SpriteConfig, SpriteData, SpritePropertyUpdate } from "./types.ts";
+import type { SpriteConfig, SpriteData } from "./types.ts";
 
 export class Sprite extends RenderObject {
   protected override data: SpriteData = Object.assign(super.getInternalData(), {
@@ -11,7 +12,7 @@ export class Sprite extends RenderObject {
   public constructor(config: Partial<SpriteConfig> = {}) {
     super(config);
     this.assignSpriteConfig(config);
-    this.renderToImage();
+    this.updateCachedImage();
   }
 
   private assignSpriteConfig(config: Partial<SpriteConfig>): null {
@@ -37,20 +38,23 @@ export class Sprite extends RenderObject {
     return data.texture;
   }
 
-  public override renderToImage(): CanvasWithContext {
-    const data = this.data;
-    if (!data.cacheDirty) return data.cachedImage;
+  protected override updateCachedImage(): null {
+    const { cachedImage, scale, texture } = this.data;
 
-    const canvas = data.cachedImage;
+    const canvas = cachedImage;
     const context = canvas.context;
-    const texture = data.texture;
+
+    const tDim = texture.dimensions();
+    const sDim: Vector2 = [tDim[0] * scale[0], tDim[1] * scale[1]];
 
     context.reset();
-    resize(canvas, texture.dimensions());
-    context.drawImage(texture.image(), 0, 0);
+    resize(canvas, sDim);
 
+    context.imageSmoothingEnabled = !texture.pixelated();
+    context.drawImage(texture.image(), 0, 0, sDim[0], sDim[1]);
     this.markCacheClean();
-    return canvas;
+
+    return null;
   }
 
   public override render(context: CanvasRenderingContext2D): null {
@@ -59,12 +63,15 @@ export class Sprite extends RenderObject {
 
     const { matrix, relativeMatrix } = this;
     const {
-      texture,
-      dimensions: [width, height],
-      scale,
-      anchor,
       alpha,
+      anchor,
+      cacheDirty,
+      cachedImage,
+      dimensions: [width, height],
+      texture,
     } = this.data;
+
+    cacheDirty && this.updateCachedImage();
 
     const localMatrix = matrix;
     localMatrix.e += anchor[0] * width;
@@ -72,14 +79,8 @@ export class Sprite extends RenderObject {
 
     context.globalAlpha *= alpha;
     context.imageSmoothingEnabled = !texture.pixelated;
-    context.setTransform(relativeMatrix.multiply(localMatrix).scale(scale[0], scale[1]));
-    context.drawImage(
-      this.renderToImage(),
-      -(anchor[0] * width),
-      -(anchor[1] * height),
-      width,
-      height,
-    );
+    context.setTransform(relativeMatrix.multiply(localMatrix));
+    context.drawImage(cachedImage, -(anchor[0] * width), -(anchor[1] * height));
 
     localMatrix.e -= anchor[0] * width;
     localMatrix.f -= anchor[1] * height;

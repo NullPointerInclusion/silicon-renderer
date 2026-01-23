@@ -3,6 +3,7 @@ import { nonNullable } from "broadutils/validate";
 import { getEmitter, zSort, type CanvasWithContext } from "../../shared.ts";
 import { RenderObject } from "../base/base.ts";
 import type { ContainerConfig, ContainerData } from "./types.ts";
+import type { Vector2 } from "broadutils/types";
 
 class Container extends RenderObject {
   protected override data: ContainerData = Object.assign(super.getInternalData(), {
@@ -81,26 +82,31 @@ class Container extends RenderObject {
     return null;
   }
 
-  public override renderToImage(): CanvasWithContext {
-    const { data } = this;
-    if (!data.cacheDirty) return data.cachedImage;
-
+  protected override updateCachedImage(): null {
     const {
       cachedImage,
       cachedImage: { context },
-    } = data;
-    resize(cachedImage, data.dimensions);
+      children,
+      dimensions,
+      scale,
+      shouldSortChildren,
+    } = this.data;
+
+    const sDim: Vector2 = [dimensions[0] * scale[0], dimensions[1] * scale[1]];
 
     context.reset();
-    data.shouldSortChildren && (data.shouldSortChildren = !data.children.sort(zSort));
-    for (let i = 0; i < data.children.length; ++i) {
+    context.scale(scale[0], scale[1]);
+    resize(cachedImage, sDim);
+
+    shouldSortChildren && (this.data.shouldSortChildren = !children.sort(zSort));
+    for (let i = 0; i < children.length; ++i) {
       context.save();
-      data.children[i]?.render(context);
+      children[i]?.render(context);
       context.restore();
     }
 
     this.markCacheClean();
-    return data.cachedImage;
+    return null;
   }
 
   public override render(context: CanvasRenderingContext2D): null {
@@ -109,25 +115,25 @@ class Container extends RenderObject {
 
     const { matrix, relativeMatrix } = this;
     const {
-      dimensions: [width, height],
-      scale,
-      anchor,
       alpha,
+      anchor,
+      cacheDirty,
+      cachedImage,
+      dimensions: [width, height],
     } = this.data;
+
+    cacheDirty && this.updateCachedImage();
 
     const localMatrix = matrix;
     localMatrix.e += anchor[0] * width;
     localMatrix.f += anchor[1] * height;
 
     context.globalAlpha *= alpha;
-    context.setTransform(relativeMatrix.multiply(localMatrix).scale(scale[0], scale[1]));
-    context.drawImage(
-      this.renderToImage(),
-      -(anchor[0] * width),
-      -(anchor[1] * height),
-      width,
-      height,
-    );
+    context.setTransform(relativeMatrix.multiply(localMatrix));
+    context.drawImage(cachedImage, -(anchor[0] * width), -(anchor[1] * height));
+
+    localMatrix.e -= anchor[0] * width;
+    localMatrix.f -= anchor[1] * height;
 
     emitter.emit("postrender", [this, context]);
     return null;
