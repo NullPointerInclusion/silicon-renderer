@@ -1,3 +1,4 @@
+import { applyContextSnapshot, type ContextSnapshot } from "broadutils/canvas";
 import { getEmitter, type CanvasWithContext } from "../../shared.ts";
 import { RenderObject } from "../base/base.ts";
 import type { TextConfig, TextData, TextPropertyUpdate } from "./types.ts";
@@ -5,15 +6,16 @@ import type { TextConfig, TextData, TextPropertyUpdate } from "./types.ts";
 export class Text extends RenderObject {
   protected override data: TextData = Object.assign(super.getInternalData(), {
     content: "",
+    fillColour: "#000",
     fontFamily: "sans-serif",
     fontSize: "1rem",
     fontWeight: 500,
-    padding: [0, 0, 0, 0] as TextData["padding"],
+    strokeColour: "#fff",
+    strokeWidth: 0,
   });
   public constructor(config: Partial<TextConfig> = {}) {
     super(config);
     this.assignTextConfig(config);
-    this.renderToImage();
   }
 
   private assignTextConfig(config: Partial<TextConfig>): null {
@@ -23,6 +25,9 @@ export class Text extends RenderObject {
     data.content = String(config.content ?? data.content);
     data.fontFamily = config.fontFamily ?? data.fontFamily;
     data.fontSize = `${fontSize}${typeof fontSize === "number" ? "px" : ""}`;
+    data.fillColour = config.fillColour ?? data.fillColour;
+    data.strokeColour = config.strokeColour ?? data.strokeColour;
+    data.strokeWidth = config.strokeWidth ?? data.strokeWidth;
     switch (config.fontWeight) {
       case "light":
       case "normal":
@@ -36,18 +41,17 @@ export class Text extends RenderObject {
       }
     }
 
-    if (config.padding) {
-      const padding = config.padding;
-      if (typeof padding === "number") data.padding.fill(padding);
-      else {
-        data.padding[0] = padding[0];
-        data.padding[1] = padding[1];
-        data.padding[2] = padding[2] ?? padding[0];
-        data.padding[3] = padding[3] ?? padding[1];
-      }
-    }
-
     return null;
+  }
+
+  protected getRenderContextSnapshot(): Partial<ContextSnapshot> {
+    const { fillColour, fontFamily, fontSize, fontWeight, strokeColour, strokeWidth } = this.data;
+    return {
+      font: `${fontWeight} ${fontSize} ${fontFamily}`,
+      fillStyle: fillColour,
+      strokeStyle: strokeColour,
+      lineWidth: strokeWidth,
+    };
   }
 
   public content(value?: string): string {
@@ -64,6 +68,22 @@ export class Text extends RenderObject {
     }
 
     return data.content;
+  }
+
+  public fillColour(value?: string): string {
+    const data = this.data;
+    const fillColour = data.fillColour;
+    data.fillColour = value ?? fillColour;
+
+    if (value != null) {
+      this.markCacheDirty();
+      getEmitter(this).emit("propupdate", [
+        this,
+        { prop: "fillColour", previous: fillColour, current: value },
+      ]);
+    }
+
+    return data.fillColour;
   }
 
   public fontFamily(value?: string): string {
@@ -114,10 +134,36 @@ export class Text extends RenderObject {
     return data.fontWeight;
   }
 
-  public override renderToImage(): CanvasWithContext {
+  public strokeColour(value?: string): string {
     const data = this.data;
-    if (!data.cacheDirty) return data.cachedImage;
-    return data.cachedImage;
+    const strokeColour = data.strokeColour;
+    data.strokeColour = value ?? strokeColour;
+
+    if (value != null) {
+      this.markCacheDirty();
+      getEmitter(this).emit("propupdate", [
+        this,
+        { prop: "strokeColour", previous: strokeColour, current: value },
+      ]);
+    }
+
+    return data.strokeColour;
+  }
+
+  public strokeWidth(value?: number): number {
+    const data = this.data;
+    const strokeWidth = data.strokeWidth;
+    data.strokeWidth = value ?? strokeWidth;
+
+    if (value != null) {
+      this.markCacheDirty();
+      getEmitter(this).emit("propupdate", [
+        this,
+        { prop: "strokeWidth", previous: strokeWidth, current: value },
+      ]);
+    }
+
+    return data.strokeWidth;
   }
 
   public override render(context: CanvasRenderingContext2D): null {
@@ -126,10 +172,11 @@ export class Text extends RenderObject {
 
     const { matrix, relativeMatrix } = this;
     const {
+      alpha,
+      anchor,
+      content,
       dimensions: [width, height],
       scale,
-      anchor,
-      alpha,
     } = this.data;
 
     const localMatrix = matrix;
@@ -138,7 +185,9 @@ export class Text extends RenderObject {
 
     context.globalAlpha *= alpha;
     context.setTransform(relativeMatrix.multiply(localMatrix).scale(scale[0], scale[1]));
-    // pending implementation
+    applyContextSnapshot(context, this.getRenderContextSnapshot());
+    context.fillText(content, 0, height, width);
+    context.strokeText(content, 0, height, width);
 
     emitter.emit("postrender", [this, context]);
     return null;

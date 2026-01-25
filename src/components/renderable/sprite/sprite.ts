@@ -12,7 +12,6 @@ export class Sprite extends RenderObject {
   public constructor(config: Partial<SpriteConfig> = {}) {
     super(config);
     this.assignSpriteConfig(config);
-    this.updateCachedImage();
   }
 
   private assignSpriteConfig(config: Partial<SpriteConfig>): null {

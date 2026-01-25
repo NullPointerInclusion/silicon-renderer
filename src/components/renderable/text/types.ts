@@ -9,26 +9,33 @@ import type { Text } from "./text.ts";
 
 export interface TextConfig extends RenderObjectConfig {
   content: string;
+  fillColour: string;
   fontFamily: string;
   fontSize: string | number;
   fontWeight: number | "light" | "normal" | "bold";
-  padding: number | Vector2 | TextData["padding"];
+  strokeColour: string;
+  strokeWidth: number;
 }
 
 export interface TextData extends RenderObjectData {
   content: string;
+  fillColour: string;
   fontFamily: string;
   fontSize: string;
   fontWeight: number;
-  padding: [number, number, number, number];
+  strokeColour: string;
+  strokeWidth: number;
 }
 
 export type TextPropertyUpdate =
   | RenderObjectPropertyUpdate
   | { prop: "content"; previous: string; current: string }
+  | { prop: "fillColour"; previous: string; current: string }
   | { prop: "fontFamily"; previous: string; current: string }
   | { prop: "fontSize"; previous: string; current: string }
-  | { prop: "fontWeight"; previous: number; current: number };
+  | { prop: "fontWeight"; previous: number; current: number }
+  | { prop: "strokeColour"; previous: string; current: string }
+  | { prop: "strokeWidth"; previous: number; current: number };
 
 export type TextEventMap = Omit<RenderObjectEventMap<Text>, "propupdate"> & {
   propupdate: [target: Text, update: TextPropertyUpdate];
